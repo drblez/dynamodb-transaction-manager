@@ -10,6 +10,10 @@ __author__ = 'drblez'
 TX_TABLE_NAME = 'tx-trans-man-tx-info'
 TX_DATA_TABLE_NAME = 'tx-trans-man-tx-data'
 
+ISOLATION_LEVEL_FULL_LOCK = '000 full lock'
+ISOLATION_LEVEL_READ_COMMITTED = '100 read committed'
+ISOLATION_LEVEL_READ_UNCOMMITTED = '200 read uncommitted'
+
 
 class BadTxTableAttributes(Exception):
     pass

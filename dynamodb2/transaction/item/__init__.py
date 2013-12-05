@@ -38,6 +38,10 @@ class TxItem():
         self.hash_key_value = hash_key_value
         self.range_key_value = range_key_value
 
+    def _lock_item(self):
+        pass
+
+
     def get(self):
         pass
 

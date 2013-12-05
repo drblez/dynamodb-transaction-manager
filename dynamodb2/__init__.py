@@ -13,3 +13,12 @@ class AWSDynamoDB2Connection():
             region,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_access_key)
+
+    def get_key(self, table_name):
+        t = self.connection.describe_table(table_name)
+        t = t['Table']
+        key_schema = t['KeySchema']
+        keys = [key_schema[0]['AttributeName']]
+        if len(key_schema) > 1:
+            keys.append(key_schema[1]['AttributeName'])
+        return keys

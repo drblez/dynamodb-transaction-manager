@@ -1,4 +1,7 @@
 # coding=utf-8
+
+import simplejson as json
+
 __author__ = 'drblez'
 
 """
@@ -7,10 +10,10 @@ __author__ = 'drblez'
 
     ------------------+---------------+--------------
         Запрашиваемый !               !
-        уровень       ! Эксклюзивная  ! Разделяемая
+        уровень  -->  ! Эксклюзивная  ! Разделяемая
     ------------------+---------------+--------------
-        Текущий       !               !
-        уровень       !               !
+        Текущий   |   !               !
+        уровень   V   !               !
     ------------------+---------------+--------------
     Нет блокировки    ! Совместимо    ! Совместимо
     ------------------+---------------+--------------
@@ -20,7 +23,7 @@ __author__ = 'drblez'
     ------------------+---------------+--------------
 
 
-    Операции накладывают блокировки в аттрибуте tx_data типа SS
+    Операции накладывают блокировки в аттрибуте tx_manager_data типа SS
 
     [
         '{ "tx_id": <tx_id>, "lock": "S"|"X" }',
@@ -29,18 +32,62 @@ __author__ = 'drblez'
 
 """
 
+LOCK_EXCLUSIVE = 'X'
+LOCK_SHARED = 'S'
+
+
+class BadLockType(Exception):
+    pass
+
 
 class TxItem():
-    def __init__(self, table_name, hash_key_value, range_key_value=None):
+    def __init__(self, table_name, hash_key_value, range_key_value=None, tx=None):
         self.request = None
-        self.tx = None
+        self.tx = tx
         self.table_name = table_name
         self.hash_key_value = hash_key_value
         self.range_key_value = range_key_value
+        self.key = self.tx.connection.gen_key_attribute(self.table_name, self.hash_key_value, self.range_key_value)
 
-    def _lock_item(self):
-        pass
+    def get_lock_data(self):
+        attribute_to_get = ['tx_manager_data']
+        consistent_read = True
+        items = self.tx.connection.connection.get_item(self.table_name, self.key, attribute_to_get, consistent_read)
+        items = items['Item']
+        if items == {}:
+            return []
+        items = items['tx_manager_data']['SS']
+        return map(json.loads, items)
 
+    def lock_item(self, lock_type):
+        if lock_type == LOCK_SHARED:
+            data_value = {
+                'tx_id': str(self.tx.tx_id),
+                'lock': lock_type
+            }
+            attribute_updates = {
+                'tx_manager_data': {
+                    'Action': 'ADD',
+                    'Value': {'SS': [json.dumps(data_value)]}
+                }
+            }
+            self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates)
+        elif lock_type == LOCK_EXCLUSIVE:
+            expected = {
+                'tx_manager_x_lock': {
+                    'Exists': "false"
+                }
+            }
+            data_value = str(self.tx.tx_id)
+            attribute_updates = {
+                'tx_manager_x_lock': {
+                    'Action': 'PUT',
+                    'Value': {'S': data_value}
+                }
+            }
+            self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates, expected)
+        else:
+            raise BadLockType('Lock type is ' + lock_type)
 
     def get(self):
         pass

@@ -27,12 +27,12 @@ def check_or_create_table(attribute_definition, connection, key_schema, provisio
     try:
         t = connection.describe_table(table_name)
         t = t['Table']
-        if t['AttributeDefinitions'] != attribute_definition:
+        if sorted(t['AttributeDefinitions']) != sorted(attribute_definition):
             raise BadTxTableAttributes('Table {} has attributes {}, need {}'.format(
                 table_name,
                 t['AttributeDefinitions'],
                 attribute_definition))
-        if t['KeySchema'] != key_schema:
+        if sorted(t['KeySchema']) != sorted(key_schema):
             raise BadTxTableKeySchema('Table {} has key schema {}, need {}'.format(
                 table_name,
                 t['KeySchema'],
@@ -107,18 +107,18 @@ class Tx():
         self.isolation_level = isolation_level
         self.creation_date = datetime.now().isoformat()
         if aws_credential is None:
-            self.connection = AWSDynamoDB2Connection().connection
+            self.connection = AWSDynamoDB2Connection()
         else:
             self.connection = AWSDynamoDB2Connection(
                 aws_credential.access_key,
                 aws_credential.secret_key,
-                aws_credential.region).connection
-        check_or_create_tx_table(self.connection, tx_table_name)
-        check_or_create_tx_data_table(self.connection, tx_data_table_name)
+                aws_credential.region)
+        check_or_create_tx_table(self.connection.connection, tx_table_name)
+        check_or_create_tx_data_table(self.connection.connection, tx_data_table_name)
 
-    def get_item(self, table_name, hash_key_value, range_key_value):
-        tx_item = TxItem(table_name, hash_key_value, range_key_value)
-        tx_item.tx = self
+    def get_item(self, table_name, hash_key_value, range_key_value=None):
+        tx_item = TxItem(table_name, hash_key_value, range_key_value, self)
+        return tx_item
 
     def commit(self):
         pass

@@ -113,15 +113,21 @@ class Tx():
                 aws_credential.access_key,
                 aws_credential.secret_key,
                 aws_credential.region)
-        check_or_create_tx_table(self.connection.connection, tx_table_name)
-        check_or_create_tx_data_table(self.connection.connection, tx_data_table_name)
+        self.tx_table_name = tx_table_name
+        self.tx_data_table_name = tx_data_table_name
+        check_or_create_tx_table(self.connection.connection, self.tx_table_name)
+        check_or_create_tx_data_table(self.connection.connection, self.tx_data_table_name)
+        self.tx_items = []
+        self.key = {'tx_id': {'S': str(self.tx_id)}}
 
     def get_item(self, table_name, hash_key_value, range_key_value=None):
         tx_item = TxItem(table_name, hash_key_value, range_key_value, self)
+        self.tx_items.append(tx_item)
         return tx_item
 
     def commit(self):
-        pass
+        for tx_item in self.tx_items:
+            tx_item.unlock()
 
     def rollback(self):
         pass

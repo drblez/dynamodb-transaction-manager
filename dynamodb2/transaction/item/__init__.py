@@ -1,6 +1,9 @@
 # coding=utf-8
+from time import sleep
+
 from boto.dynamodb2.exceptions import ConditionalCheckFailedException
 import simplejson as json
+
 
 __author__ = 'drblez'
 
@@ -43,6 +46,14 @@ class BadLockType(Exception):
     pass
 
 
+class LockWaitTime(Exception):
+    pass
+
+
+class NotExistingItem(Exception):
+    pass
+
+
 class TxItem():
     def __init__(self, table_name, hash_key_value, range_key_value=None, tx=None):
         self.request = None
@@ -53,11 +64,14 @@ class TxItem():
         self.range_key_value = range_key_value
         self.key = self.tx.connection.gen_key_attribute(self.table_name, self.hash_key_value, self.range_key_value)
         self.lock_state = None
+        self.not_exist = None
 
     def get_locks(self):
         attribute_to_get = [LOCKS_DATA_FIELD]
         consistent_read = True
         items = self.tx.connection.connection.get_item(self.table_name, self.key, attribute_to_get, consistent_read)
+        if items == {}:
+            raise NotExistingItem('Item with key {} not exist'.format(str(self.key)))
         items = items['Item']
         if items == {}:
             return []
@@ -139,7 +153,6 @@ class TxItem():
             }
         }
         self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates)
-        self.lock_state = None
 
     def lock(self, requested_lock_state):
         print 'Current lock state is {}, requested lock state is {}'.format(self.lock_state, requested_lock_state)
@@ -186,18 +199,50 @@ class TxItem():
         else:
             return True
 
+    def wait_lock(self, requested_lock_state, wait_time=0.1, max_wait_time=10, generate_exception=True):
+        count = 0
+        while not self.lock(requested_lock_state):
+            count += wait_time
+            if count > max_wait_time:
+                if generate_exception:
+                    raise LockWaitTime('Exceed {} sec.'.format(max_wait_time))
+                return False
+            sleep(wait_time)
+        return True
+
     def unlock(self):
         self._unlock()
+        self.lock_state = None
 
-    def _get(self):
+    def _get(self, attributes_to_get=None, consistent_read=True, return_consumed_capacity=None):
+        result = self.tx.connection.connection.get_item(
+            self.table_name, self.key,
+            attributes_to_get=attributes_to_get,
+            consistent_read=consistent_read,
+            return_consumed_capacity=return_consumed_capacity)
+        return result
+
+    def get(self, attributes_to_get=None, consistent_read=True, return_consumed_capacity=None):
+        self.wait_lock(LOCK_SHARED)
+        return self._get(attributes_to_get, consistent_read, return_consumed_capacity)
+
+    def _put(self, item, expected=None, return_values=None, return_consumed_capacity=None,
+             return_item_collection_metrics=None):
         pass
 
-    def get(self):
-        self.lock(LOCK_SHARED)
-        return self._get()
+    def put(self, item, expected=None, return_values=None, return_consumed_capacity=None,
+            return_item_collection_metrics=None):
+        try:
+            self.wait_lock(LOCK_EXCLUSIVE)
+            return self._put(item, expected=expected, return_values=return_values,
+                             return_consumed_capacity=return_consumed_capacity,
+                             return_item_collection_metrics=return_item_collection_metrics)
+        except NotExistingItem:
+            expected = self.key
+            for k in expected.keys():
+                expected[k] = {'Exists': 'false'}
+            item = self.key
 
-    def put(self, data):
-        pass
 
     def update(self, data):
         pass

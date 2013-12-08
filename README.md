@@ -1,7 +1,7 @@
 dynamodb-transaction-manager
 ============================
 
-{code}
+``` python
     ...
     tx = Tx('Add into shopping cart', ISOLATION_LEVEL_READ_COMMITTED)
     user = tx.get_item('user', user_name)
@@ -10,4 +10,4 @@ dynamodb-transaction-manager
     cart.put({'item': {'S': item_name}})
     tx.commit()
     ...
-{code}
+```

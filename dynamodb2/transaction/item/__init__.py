@@ -1,9 +1,8 @@
 # coding=utf-8
+import logging
 from time import sleep
-
 from boto.dynamodb2.exceptions import ConditionalCheckFailedException
 import simplejson as json
-
 
 __author__ = 'drblez'
 
@@ -41,6 +40,9 @@ LOCK_SHARED = 'S'
 LOCKS_DATA_FIELD = 'tx_manager_locks'
 X_LOCK_DATA_FIELD = 'tx_manager_x_lock'
 
+logger = logging.getLogger('item')
+logger.setLevel(logging.DEBUG)
+
 
 class BadLockType(Exception):
     pass
@@ -77,10 +79,10 @@ class TxItem():
             return []
         items = items[LOCKS_DATA_FIELD]['SS']
         locks = []
-        print self.tx_id_str
+        logger.debug('Tx ID: {}'.format(self.tx_id_str))
         for item in items:
             item = json.loads(item)
-            print item
+            logger.debug('Item: {}'.format(item))
             if item['tx_id'] != self.tx_id_str:
                 locks.append(item)
         return locks
@@ -155,27 +157,28 @@ class TxItem():
         self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates)
 
     def lock(self, requested_lock_state):
-        print 'Current lock state is {}, requested lock state is {}'.format(self.lock_state, requested_lock_state)
+        logger.debug('Current lock state is {}, requested lock state is {}'.format(self.lock_state,
+                                                                                   requested_lock_state))
         if self.lock_state != requested_lock_state:
             if requested_lock_state == LOCK_SHARED:
-                print 'S lock state'
+                logger.debug('S lock state')
                 if self.lock_state == LOCK_EXCLUSIVE:
-                    print 'Return True because self has X lock state'
+                    logger.debug('Return True because self has X lock state')
                     return True
                 locks = self.get_locks()
                 for lock in locks:
                     if lock['lock'] == LOCK_EXCLUSIVE:
-                        print 'Item already X locked'
+                        logger.debug('Item already X locked')
                         return False
-                print 'Set S lock on item'
+                logger.debug('Set S lock on item')
                 self._lock(requested_lock_state)
                 self.lock_state = requested_lock_state
                 return True
             elif requested_lock_state == LOCK_EXCLUSIVE:
-                print 'X lock state'
+                logger.debug('X lock state')
                 locks = self.get_locks()
                 if len(locks) == 0:
-                    print 'No any locks found'
+                    logger.debug('No any locks found')
                     self._x_lock()
                     self._lock(requested_lock_state, after_x_lock=True)
                     data_value = {
@@ -192,15 +195,15 @@ class TxItem():
                     self.lock_state = requested_lock_state
                     return True
                 else:
-                    print 'Any locks found'
+                    logger.debug('Any locks found')
                     return False
             else:
                 raise BadLockType('Lock type is ' + requested_lock_state)
         else:
             return True
 
-    def wait_lock(self, requested_lock_state, wait_time=0.1, max_wait_time=10, generate_exception=True):
-        count = 0
+    def wait_lock(self, requested_lock_state, wait_time=0.1, max_wait_time=1, generate_exception=True):
+        count = 0.0
         while not self.lock(requested_lock_state):
             count += wait_time
             if count > max_wait_time:
@@ -228,21 +231,52 @@ class TxItem():
 
     def _put(self, item, expected=None, return_values=None, return_consumed_capacity=None,
              return_item_collection_metrics=None):
-        pass
+        for k in self.key.keys():
+            item[k] = self.key[k]
+        result = self.tx.connection.connection.put_item(
+            self.table_name, item, expected=expected, return_values=return_values,
+            return_consumed_capacity=return_consumed_capacity,
+            return_item_collection_metrics=return_item_collection_metrics
+        )
+        return result
 
-    def put(self, item, expected=None, return_values=None, return_consumed_capacity=None,
+    def _add_x_lock_to_item(self, item):
+        data_value = {
+            'tx_id': self.tx_id_str,
+            'lock': LOCK_EXCLUSIVE
+        }
+        item[X_LOCK_DATA_FIELD] = {'S': self.tx_id_str}
+        item[LOCKS_DATA_FIELD] = {'SS': [json.dumps(data_value)]}
+
+    def put(self, item, expected=None, return_consumed_capacity=None,
             return_item_collection_metrics=None):
+        return_values = 'ALL_OLD'
         try:
             self.wait_lock(LOCK_EXCLUSIVE)
+            if expected is None:
+                expected = {}
+            expected[X_LOCK_DATA_FIELD] = {
+                'Value': {'S': self.tx_id_str},
+                'Exists': 'true'
+            }
+            self._add_x_lock_to_item(item)
+            result = self._put(item, expected=expected, return_values=return_values,
+                               return_consumed_capacity=return_consumed_capacity,
+                               return_item_collection_metrics=return_item_collection_metrics)
+            self.tx.put_tx_log(self.key, result, 'PUT')
+            return result
+        except NotExistingItem:
+            expected = self.key.copy()
+            for k in self.key.keys():
+                expected[k] = {'Exists': 'false'}
+                item[k] = self.key[k]
+            self._add_x_lock_to_item(item)
+            logger.debug('Expected value: {}'.format(str(expected)))
+            logger.debug('Item value: {}'.format(str(item)))
+            self.tx.put_tx_log(self.key, None, 'DELETE')
             return self._put(item, expected=expected, return_values=return_values,
                              return_consumed_capacity=return_consumed_capacity,
                              return_item_collection_metrics=return_item_collection_metrics)
-        except NotExistingItem:
-            expected = self.key
-            for k in expected.keys():
-                expected[k] = {'Exists': 'false'}
-            item = self.key
-
 
     def update(self, data):
         pass

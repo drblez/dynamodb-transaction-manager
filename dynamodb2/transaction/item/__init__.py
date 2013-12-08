@@ -1,6 +1,7 @@
 # coding=utf-8
 import logging
 from time import sleep
+import uuid
 from boto.dynamodb2.exceptions import ConditionalCheckFailedException
 import simplejson as json
 
@@ -28,7 +29,7 @@ __author__ = 'drblez'
     Операции накладывают блокировки в аттрибуте tx_manager_data типа SS
 
     [
-        '{ "tx_id": <tx_id>, "lock": "S"|"X" }',
+        '{ "tx_uuid": <tx_uuid>, "lock": "S"|"X" }',
         ...
     ]
 
@@ -60,13 +61,14 @@ class TxItem():
     def __init__(self, table_name, hash_key_value, range_key_value=None, tx=None):
         self.request = None
         self.tx = tx
-        self.tx_id_str = str(tx.tx_id)
+        self.tx_uuid_str = str(tx.tx_uuid)
         self.table_name = table_name
         self.hash_key_value = hash_key_value
         self.range_key_value = range_key_value
         self.key = self.tx.connection.gen_key_attribute(self.table_name, self.hash_key_value, self.range_key_value)
         self.lock_state = None
         self.not_exist = None
+        self.rec_uuid = uuid.uuid1()
 
     def get_locks(self):
         attribute_to_get = [LOCKS_DATA_FIELD]
@@ -79,11 +81,11 @@ class TxItem():
             return []
         items = items[LOCKS_DATA_FIELD]['SS']
         locks = []
-        logger.debug('Tx ID: {}'.format(self.tx_id_str))
+        logger.debug('Tx ID: {}'.format(self.tx_uuid_str))
         for item in items:
             item = json.loads(item)
             logger.debug('Item: {}'.format(item))
-            if item['tx_id'] != self.tx_id_str:
+            if item['tx_uuid'] != self.tx_uuid_str:
                 locks.append(item)
         return locks
 
@@ -93,7 +95,7 @@ class TxItem():
                 'Exists': 'false'
             }
         }
-        data_value = self.tx_id_str
+        data_value = self.tx_uuid_str
         attribute_updates = {
             X_LOCK_DATA_FIELD: {
                 'Action': 'PUT',
@@ -112,7 +114,7 @@ class TxItem():
                 }
             }
         data_value = {
-            'tx_id': self.tx_id_str,
+            'tx_uuid': self.tx_uuid_str,
             'lock': lock_state
         }
         attribute_updates = {
@@ -125,7 +127,7 @@ class TxItem():
 
     def _unlock(self):
         try:
-            data_value = self.tx_id_str
+            data_value = self.tx_uuid_str
             expected = {
                 X_LOCK_DATA_FIELD: {
                     'Value': {'S': data_value},
@@ -141,11 +143,11 @@ class TxItem():
         except ConditionalCheckFailedException:
             pass
         data_value_1 = {
-            'tx_id': self.tx_id_str,
+            'tx_uuid': self.tx_uuid_str,
             'lock': LOCK_EXCLUSIVE
         }
         data_value_2 = {
-            'tx_id': self.tx_id_str,
+            'tx_uuid': self.tx_uuid_str,
             'lock': LOCK_SHARED
         }
         attribute_updates = {
@@ -182,7 +184,7 @@ class TxItem():
                     self._x_lock()
                     self._lock(requested_lock_state, after_x_lock=True)
                     data_value = {
-                        'tx_id': self.tx_id_str,
+                        'tx_uuid': self.tx_uuid_str,
                         'lock': LOCK_SHARED
                     }
                     attribute_updates = {
@@ -242,10 +244,10 @@ class TxItem():
 
     def _add_x_lock_to_item(self, item):
         data_value = {
-            'tx_id': self.tx_id_str,
+            'tx_uuid': self.tx_uuid_str,
             'lock': LOCK_EXCLUSIVE
         }
-        item[X_LOCK_DATA_FIELD] = {'S': self.tx_id_str}
+        item[X_LOCK_DATA_FIELD] = {'S': self.tx_uuid_str}
         item[LOCKS_DATA_FIELD] = {'SS': [json.dumps(data_value)]}
 
     def put(self, item, expected=None, return_consumed_capacity=None,
@@ -256,14 +258,14 @@ class TxItem():
             if expected is None:
                 expected = {}
             expected[X_LOCK_DATA_FIELD] = {
-                'Value': {'S': self.tx_id_str},
+                'Value': {'S': self.tx_uuid_str},
                 'Exists': 'true'
             }
             self._add_x_lock_to_item(item)
             result = self._put(item, expected=expected, return_values=return_values,
                                return_consumed_capacity=return_consumed_capacity,
                                return_item_collection_metrics=return_item_collection_metrics)
-            self.tx.put_tx_log(self.key, result, 'PUT')
+            self.tx._put_tx_log(self.rec_uuid, self.key, result, 'PUT')
             return result
         except NotExistingItem:
             expected = self.key.copy()
@@ -273,7 +275,7 @@ class TxItem():
             self._add_x_lock_to_item(item)
             logger.debug('Expected value: {}'.format(str(expected)))
             logger.debug('Item value: {}'.format(str(item)))
-            self.tx.put_tx_log(self.key, None, 'DELETE')
+            self.tx._put_tx_log(self.rec_uuid, self.key, None, 'DELETE')
             return self._put(item, expected=expected, return_values=return_values,
                              return_consumed_capacity=return_consumed_capacity,
                              return_item_collection_metrics=return_item_collection_metrics)

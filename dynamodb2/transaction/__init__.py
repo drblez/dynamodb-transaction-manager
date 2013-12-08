@@ -181,7 +181,7 @@ class Tx():
             'tx_name': {'S': self.tx_name},
             'isolation_level': {'S': self.isolation_level},
             'creation_date': {'S': self.creation_date},
-            'status': {'S': 'STARTED'}
+            'status': {'S': 'START'}
         }
         self.connection.connection.put_item(self.tx_table_name, tx_record, expected=expected)
 
@@ -239,14 +239,15 @@ class Tx():
         self.tx_items.append(tx_item)
         return tx_item
 
-    def _put_tx_log(self, rec_uuid, key, data, operation):
+    def _put_tx_log(self, tx_item, data, operation):
         log_uuid = uuid.uuid1()
         log_record = {
             'tx_uuid': {'S': str(self.tx_uuid)},
             'log_uuid': {'S': str(log_uuid)},
-            'rec_uuid': {'S': str(rec_uuid)},
+            'rec_uuid': {'S': str(tx_item.rec_uuid)},
             'creation_date': {'S': datetime.now().isoformat()},
-            'key': {'S': json.dumps(key)},
+            'table': {'S': tx_item.table_name},
+            'key': {'S': json.dumps(tx_item.key)},
             'operation': {'S': operation}
         }
         if not data is None:
@@ -266,9 +267,25 @@ class Tx():
         self.__add_log_uuid_to_tx(log_uuid)
         return result
 
+    def __set_tx_status(self, status):
+        expected = {
+            'tx_uuid': {
+                'Exists': 'true',
+                'Value': {'S': str(self.tx_uuid)}
+            }
+        }
+        update_rec = {
+            'status': {
+                'Action': 'PUT',
+                'Value': {'S': status}
+            }
+        }
+        self.connection.connection.update_item(self.tx_table_name, self.key, update_rec, expected=expected)
+
     def commit(self):
         for tx_item in self.tx_items:
             tx_item.unlock()
+        self.__set_tx_status('COMMIT')
 
     def rollback(self):
-        pass
+        self.__set_tx_status('ROLLBACK')

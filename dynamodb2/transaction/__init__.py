@@ -282,9 +282,12 @@ class Tx():
         }
         self.connection.connection.update_item(self.tx_table_name, self.key, update_rec, expected=expected)
 
-    def commit(self):
+    def _unlock_all_items(self):
         for tx_item in self.tx_items:
             tx_item.unlock()
+
+    def commit(self):
+        self._unlock_all_items()
         self.__set_tx_status('COMMIT')
 
     def rollback(self):
@@ -301,3 +304,4 @@ class Tx():
                 logger.debug('PUT Table: {}, key: {}'.format(table_name, key))
                 self.connection.connection.delete_item(table_name, key)
         self.__set_tx_status('ROLLBACK')
+        self._unlock_all_items()

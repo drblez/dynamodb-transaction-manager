@@ -288,4 +288,16 @@ class Tx():
         self.__set_tx_status('COMMIT')
 
     def rollback(self):
+        while len(self.tx_log) > 0:
+            log_record = self.tx_log.pop()
+            table_name = log_record['table']['S']
+            operation = log_record['operation']['S']
+            if operation == 'PUT':
+                data = json.loads(log_record['data']['S'])['Attributes']
+                logger.debug('PUT Table: {}, data: {}'.format(table_name, data))
+                self.connection.connection.put_item(table_name, data)
+            elif operation == 'DELETE':
+                key = json.loads(log_record['key']['S'])
+                logger.debug('PUT Table: {}, key: {}'.format(table_name, key))
+                self.connection.connection.delete_item(table_name, key)
         self.__set_tx_status('ROLLBACK')

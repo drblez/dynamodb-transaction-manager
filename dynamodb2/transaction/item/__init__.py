@@ -275,13 +275,46 @@ class TxItem():
             self._add_x_lock_to_item(item)
             logger.debug('Expected value: {}'.format(str(expected)))
             logger.debug('Item value: {}'.format(str(item)))
+            result = self._put(item, expected=expected, return_values=return_values,
+                               return_consumed_capacity=return_consumed_capacity,
+                               return_item_collection_metrics=return_item_collection_metrics)
             self.tx._put_tx_log(self, None, 'DELETE')
-            return self._put(item, expected=expected, return_values=return_values,
-                             return_consumed_capacity=return_consumed_capacity,
-                             return_item_collection_metrics=return_item_collection_metrics)
+            return result
 
-    def update(self, data):
-        pass
+    def _update(self, attribute_updates=None, expected=None, return_values=None, return_consumed_capacity=None,
+                return_item_collection_metrics=None):
+        for k in self.key.keys():
+            try:
+                del attribute_updates[k]
+            except KeyError:
+                pass
+        logger.debug('Attribute updates: {}'.format(attribute_updates))
+        logger.debug('Expected: {}'.format(expected))
+        result = self.tx.connection.connection.update_item(
+            self.table_name, self.key, attribute_updates=attribute_updates, expected=expected,
+            return_values=return_values, return_consumed_capacity=return_consumed_capacity,
+            return_item_collection_metrics=return_item_collection_metrics)
+        return result
+
+    def update(self, update_data, expected=None, return_consumed_capacity=None,
+               return_item_collection_metrics=None):
+        return_values = 'ALL_OLD'
+        try:
+            self.wait_lock(LOCK_EXCLUSIVE)
+            if expected is None:
+                expected = {}
+            expected[X_LOCK_DATA_FIELD] = {
+                'Value': {'S': self.tx_uuid_str},
+                'Exists': 'true'
+            }
+            result = self._update(
+                attribute_updates=update_data, expected=expected, return_values=return_values,
+                return_consumed_capacity=return_consumed_capacity,
+                return_item_collection_metrics=return_item_collection_metrics)
+            self.tx._put_tx_log(self, result, 'PUT')
+            return result
+        except NotExistingItem:
+            raise NotExistingItem('Cannot update non existent item with key {}'.format(self.key))
 
     def delete(self):
         pass

@@ -264,7 +264,7 @@ class TxItem():
             self.__add_x_lock_to_item(item)
             result = self.__put(item, expected=expected, return_values=return_values,
                                 return_consumed_capacity=return_consumed_capacity,
-                               return_item_collection_metrics=return_item_collection_metrics)
+                                return_item_collection_metrics=return_item_collection_metrics)
             self.tx._put_tx_log(self, result, 'PUT')
             return result
         except NotExistingItem:
@@ -277,7 +277,7 @@ class TxItem():
             logger.debug('Item value: {}'.format(str(item)))
             result = self.__put(item, expected=expected, return_values=return_values,
                                 return_consumed_capacity=return_consumed_capacity,
-                               return_item_collection_metrics=return_item_collection_metrics)
+                                return_item_collection_metrics=return_item_collection_metrics)
             self.tx._put_tx_log(self, None, 'DELETE')
             return result
 

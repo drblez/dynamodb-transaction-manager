@@ -65,89 +65,39 @@ def __check_or_create_table(attribute_definition, connection, key_schema, provis
 def _check_or_create_tx_table(connection, table_name=TX_TABLE_NAME,
                               read_capacity_units=5, write_capacity_units=5):
     attribute_definition = [
-        {
-            'AttributeName': 'tx_uuid',
-            'AttributeType': 'S'
-        }
+        dict(AttributeName='tx_uuid', AttributeType='S')
     ]
     key_schema = [
-        {
-            'AttributeName': 'tx_uuid',
-            'KeyType': 'HASH'
-        }
+        dict(AttributeName='tx_uuid', KeyType='HASH')
     ]
-    provisioned_throughput = {
-        'ReadCapacityUnits': read_capacity_units,
-        'WriteCapacityUnits': write_capacity_units
-    }
+    provisioned_throughput = dict(ReadCapacityUnits=read_capacity_units, WriteCapacityUnits=write_capacity_units)
     __check_or_create_table(attribute_definition, connection, key_schema, provisioned_throughput, table_name)
 
 
 def _check_or_create_tx_data_table(connection, table_name=TX_DATA_TABLE_NAME,
                                    read_capacity_units=5, write_capacity_units=5):
     attribute_definition = [
-        {
-            'AttributeName': 'tx_uuid',
-            'AttributeType': 'S'
-        },
-        {
-            'AttributeName': 'log_uuid',
-            'AttributeType': 'S'
-        },
-        {
-            'AttributeName': 'rec_uuid',
-            'AttributeType': 'S'
-        },
-        {
-            'AttributeName': 'creation_date',
-            'AttributeType': 'S'
-        }
+        dict(AttributeName='tx_uuid', AttributeType='S'),
+        dict(AttributeName='log_uuid', AttributeType='S'),
+        dict(AttributeName='rec_uuid', AttributeType='S'),
+        dict(AttributeName='creation_date', AttributeType='S')
     ]
     key_schema = [
-        {
-            'AttributeName': 'tx_uuid',
-            'KeyType': 'HASH'
-        },
-        {
-            'AttributeName': 'log_uuid',
-            'KeyType': 'RANGE'
-        }
+        dict(AttributeName='tx_uuid', KeyType='HASH'),
+        dict(AttributeName='log_uuid', KeyType='RANGE')
     ]
     local_secondary_indexes = [
-        {
-            'IndexName': 'creation_date-index',
-            'KeySchema': [
-                {
-                    'AttributeName': 'tx_uuid',
-                    'KeyType': 'HASH'
-                },
-                {
-                    'AttributeName': 'creation_date',
-                    'KeyType': 'RANGE'
-                }
-            ],
-            'Projection': {'ProjectionType': 'ALL'}
-        },
-        {
-            'IndexName': 'rec_uuid-index',
-            'KeySchema': [
-                {
-                    'AttributeName': 'tx_uuid',
-                    'KeyType': 'HASH'
-                },
-                {
-                    'AttributeName': 'rec_uuid',
-                    'KeyType': 'RANGE'
-                }
-            ],
-            'Projection': {'ProjectionType': 'ALL'}
-        }
+        dict(IndexName='creation_date-index', KeySchema=[
+            dict(AttributeName='tx_uuid', KeyType='HASH'),
+            dict(AttributeName='creation_date', KeyType='RANGE')
+        ], Projection=dict(ProjectionType='ALL')),
+        dict(IndexName='rec_uuid-index', KeySchema=[
+            dict(AttributeName='tx_uuid', KeyType='HASH'),
+            dict(AttributeName='rec_uuid', KeyType='RANGE')
+        ], Projection={'ProjectionType': 'ALL'})
 
     ]
-    provisioned_throughput = {
-        'ReadCapacityUnits': read_capacity_units,
-        'WriteCapacityUnits': write_capacity_units
-    }
+    provisioned_throughput = dict(ReadCapacityUnits=read_capacity_units, WriteCapacityUnits=write_capacity_units)
     __check_or_create_table(attribute_definition, connection, key_schema, provisioned_throughput, table_name,
                             local_secondary_indexes=local_secondary_indexes)
 
@@ -171,7 +121,7 @@ class Tx():
         _check_or_create_tx_table(self.connection.connection, self.tx_table_name)
         _check_or_create_tx_data_table(self.connection.connection, self.tx_data_table_name)
         self.tx_items = []
-        self.key = {'tx_uuid': {'S': str(self.tx_uuid)}}
+        self.key = dict(tx_uuid=dict(S=str(self.tx_uuid)))
         self.tx_log = []
         expected = {
             'tx_uuid': {'Exists': 'false'}

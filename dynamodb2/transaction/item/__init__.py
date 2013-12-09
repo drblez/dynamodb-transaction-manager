@@ -90,71 +90,35 @@ class TxItem():
         return locks
 
     def __x_lock(self):
-        expected = {
-            X_LOCK_DATA_FIELD: {
-                'Exists': 'false'
-            }
-        }
+        expected = {X_LOCK_DATA_FIELD: dict(Exists='false')}
         data_value = self.tx_uuid_str
-        attribute_updates = {
-            X_LOCK_DATA_FIELD: {
-                'Action': 'PUT',
-                'Value': {'S': data_value}
-            }
-        }
+        attribute_updates = {X_LOCK_DATA_FIELD: dict(Action='PUT', Value=dict(S=data_value))}
         self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates, expected)
 
     def __lock(self, lock_state, after_x_lock=False):
         if after_x_lock:
             expected = None
         else:
-            expected = {
-                X_LOCK_DATA_FIELD: {
-                    'Exists': 'false'
-                }
-            }
-        data_value = {
-            'tx_uuid': self.tx_uuid_str,
-            'lock': lock_state
-        }
+            expected = {X_LOCK_DATA_FIELD: dict(Exists='false')}
+        data_value = dict(tx_uuid=self.tx_uuid_str, lock=lock_state)
         attribute_updates = {
-            LOCKS_DATA_FIELD: {
-                'Action': 'ADD',
-                'Value': {'SS': [json.dumps(data_value)]}
-            }
+            LOCKS_DATA_FIELD: dict(Action='ADD', Value=dict(SS=[json.dumps(data_value)]))
         }
         self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates, expected)
 
     def __unlock(self):
         try:
             data_value = self.tx_uuid_str
-            expected = {
-                X_LOCK_DATA_FIELD: {
-                    'Value': {'S': data_value},
-                    'Exists': 'true'
-                }
-            }
-            attribute_updates = {
-                X_LOCK_DATA_FIELD: {
-                    'Action': 'DELETE'
-                }
-            }
+            expected = {X_LOCK_DATA_FIELD: dict(Value=dict(S=data_value), Exists='true')}
+            attribute_updates = {X_LOCK_DATA_FIELD: dict(Action='DELETE')}
             self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates, expected)
         except ConditionalCheckFailedException:
             pass
-        data_value_1 = {
-            'tx_uuid': self.tx_uuid_str,
-            'lock': LOCK_EXCLUSIVE
-        }
-        data_value_2 = {
-            'tx_uuid': self.tx_uuid_str,
-            'lock': LOCK_SHARED
-        }
+        data_value_1 = dict(tx_uuid=self.tx_uuid_str, lock=LOCK_EXCLUSIVE)
+        data_value_2 = dict(tx_uuid=self.tx_uuid_str, lock=LOCK_SHARED)
         attribute_updates = {
-            LOCKS_DATA_FIELD: {
-                'Action': 'DELETE',
-                'Value': {'SS': [json.dumps(data_value_1), json.dumps(data_value_2)]}
-            }
+            LOCKS_DATA_FIELD: dict(
+                Action='DELETE', Value=dict(SS=[json.dumps(data_value_1), json.dumps(data_value_2)]))
         }
         self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates)
 
@@ -183,15 +147,9 @@ class TxItem():
                     logger.debug('No any locks found')
                     self.__x_lock()
                     self.__lock(requested_lock_state, after_x_lock=True)
-                    data_value = {
-                        'tx_uuid': self.tx_uuid_str,
-                        'lock': LOCK_SHARED
-                    }
+                    data_value = dict(tx_uuid=self.tx_uuid_str, lock=LOCK_SHARED)
                     attribute_updates = {
-                        LOCKS_DATA_FIELD: {
-                            'Action': 'DELETE',
-                            'Value': {'SS': [json.dumps(data_value)]}
-                        }
+                        LOCKS_DATA_FIELD: dict(Action='DELETE', Value={'SS': [json.dumps(data_value)]})
                     }
                     self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates)
                     self.lock_state = requested_lock_state
@@ -243,12 +201,9 @@ class TxItem():
         return result
 
     def __add_x_lock_to_item(self, item):
-        data_value = {
-            'tx_uuid': self.tx_uuid_str,
-            'lock': LOCK_EXCLUSIVE
-        }
-        item[X_LOCK_DATA_FIELD] = {'S': self.tx_uuid_str}
-        item[LOCKS_DATA_FIELD] = {'SS': [json.dumps(data_value)]}
+        data_value = dict(tx_uuid=self.tx_uuid_str, lock=LOCK_EXCLUSIVE)
+        item[X_LOCK_DATA_FIELD] = dict(S=self.tx_uuid_str)
+        item[LOCKS_DATA_FIELD] = dict(SS=[json.dumps(data_value)])
 
     def put(self, item, expected=None, return_consumed_capacity=None,
             return_item_collection_metrics=None):
@@ -257,10 +212,7 @@ class TxItem():
             self.wait_lock(LOCK_EXCLUSIVE)
             if expected is None:
                 expected = {}
-            expected[X_LOCK_DATA_FIELD] = {
-                'Value': {'S': self.tx_uuid_str},
-                'Exists': 'true'
-            }
+            expected[X_LOCK_DATA_FIELD] = dict(Value=dict(S=self.tx_uuid_str), Exists='true')
             self.__add_x_lock_to_item(item)
             result = self.__put(item, expected=expected, return_values=return_values,
                                 return_consumed_capacity=return_consumed_capacity,
@@ -270,7 +222,7 @@ class TxItem():
         except NotExistingItem:
             expected = self.key.copy()
             for k in self.key.keys():
-                expected[k] = {'Exists': 'false'}
+                expected[k] = dict(Exists='false')
                 item[k] = self.key[k]
             self.__add_x_lock_to_item(item)
             logger.debug('Expected value: {}'.format(str(expected)))
@@ -303,10 +255,7 @@ class TxItem():
             self.wait_lock(LOCK_EXCLUSIVE)
             if expected is None:
                 expected = {}
-            expected[X_LOCK_DATA_FIELD] = {
-                'Value': {'S': self.tx_uuid_str},
-                'Exists': 'true'
-            }
+            expected[X_LOCK_DATA_FIELD] = dict(Value=dict(S=self.tx_uuid_str), Exists='true')
             result = self.__update(
                 attribute_updates=update_data, expected=expected, return_values=return_values,
                 return_consumed_capacity=return_consumed_capacity,
@@ -316,5 +265,21 @@ class TxItem():
         except NotExistingItem:
             raise NotExistingItem('Cannot update non existent item with key {}'.format(self.key))
 
-    def delete(self):
-        pass
+    def delete(self, expected=None, return_consumed_capacity=None, return_item_collection_metrics=None):
+        return_values = 'ALL_OLD'
+        try:
+            self.wait_lock(LOCK_EXCLUSIVE)
+            if expected is None:
+                expected = {}
+            expected[X_LOCK_DATA_FIELD] = dict(Value=dict(S=self.tx_uuid_str), Exists='true')
+            result = self.__delete(
+                expected=expected, return_values=return_values, return_consumed_capacity=return_consumed_capacity,
+                return_item_collection_metrics=return_item_collection_metrics)
+            self.tx._put_tx_log(self, result, 'PUT')
+            return result
+        except NotExistingItem:
+            raise NotExistingItem('Cannot delete non existent item with key {}'.format(self.key))
+
+    def __delete(self, expected=None, return_values=None, return_consumed_capacity=None,
+                 return_item_collection_metrics=None):
+        return {}

@@ -70,7 +70,7 @@ class TxItem():
         self.not_exist = None
         self.rec_uuid = uuid.uuid1()
 
-    def get_locks(self):
+    def _get_locks(self):
         attribute_to_get = [LOCKS_DATA_FIELD]
         consistent_read = True
         items = self.tx.connection.connection.get_item(self.table_name, self.key, attribute_to_get, consistent_read)
@@ -89,7 +89,7 @@ class TxItem():
                 locks.append(item)
         return locks
 
-    def _x_lock(self):
+    def __x_lock(self):
         expected = {
             X_LOCK_DATA_FIELD: {
                 'Exists': 'false'
@@ -104,7 +104,7 @@ class TxItem():
         }
         self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates, expected)
 
-    def _lock(self, lock_state, after_x_lock=False):
+    def __lock(self, lock_state, after_x_lock=False):
         if after_x_lock:
             expected = None
         else:
@@ -125,7 +125,7 @@ class TxItem():
         }
         self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates, expected)
 
-    def _unlock(self):
+    def __unlock(self):
         try:
             data_value = self.tx_uuid_str
             expected = {
@@ -167,22 +167,22 @@ class TxItem():
                 if self.lock_state == LOCK_EXCLUSIVE:
                     logger.debug('Return True because self has X lock state')
                     return True
-                locks = self.get_locks()
+                locks = self._get_locks()
                 for lock in locks:
                     if lock['lock'] == LOCK_EXCLUSIVE:
                         logger.debug('Item already X locked')
                         return False
                 logger.debug('Set S lock on item')
-                self._lock(requested_lock_state)
+                self.__lock(requested_lock_state)
                 self.lock_state = requested_lock_state
                 return True
             elif requested_lock_state == LOCK_EXCLUSIVE:
                 logger.debug('X lock state')
-                locks = self.get_locks()
+                locks = self._get_locks()
                 if len(locks) == 0:
                     logger.debug('No any locks found')
-                    self._x_lock()
-                    self._lock(requested_lock_state, after_x_lock=True)
+                    self.__x_lock()
+                    self.__lock(requested_lock_state, after_x_lock=True)
                     data_value = {
                         'tx_uuid': self.tx_uuid_str,
                         'lock': LOCK_SHARED
@@ -216,10 +216,10 @@ class TxItem():
         return True
 
     def unlock(self):
-        self._unlock()
+        self.__unlock()
         self.lock_state = None
 
-    def _get(self, attributes_to_get=None, consistent_read=True, return_consumed_capacity=None):
+    def __get(self, attributes_to_get=None, consistent_read=True, return_consumed_capacity=None):
         result = self.tx.connection.connection.get_item(
             self.table_name, self.key,
             attributes_to_get=attributes_to_get,
@@ -229,10 +229,10 @@ class TxItem():
 
     def get(self, attributes_to_get=None, consistent_read=True, return_consumed_capacity=None):
         self.wait_lock(LOCK_SHARED)
-        return self._get(attributes_to_get, consistent_read, return_consumed_capacity)
+        return self.__get(attributes_to_get, consistent_read, return_consumed_capacity)
 
-    def _put(self, item, expected=None, return_values=None, return_consumed_capacity=None,
-             return_item_collection_metrics=None):
+    def __put(self, item, expected=None, return_values=None, return_consumed_capacity=None,
+              return_item_collection_metrics=None):
         for k in self.key.keys():
             item[k] = self.key[k]
         result = self.tx.connection.connection.put_item(
@@ -242,7 +242,7 @@ class TxItem():
         )
         return result
 
-    def _add_x_lock_to_item(self, item):
+    def __add_x_lock_to_item(self, item):
         data_value = {
             'tx_uuid': self.tx_uuid_str,
             'lock': LOCK_EXCLUSIVE
@@ -261,9 +261,9 @@ class TxItem():
                 'Value': {'S': self.tx_uuid_str},
                 'Exists': 'true'
             }
-            self._add_x_lock_to_item(item)
-            result = self._put(item, expected=expected, return_values=return_values,
-                               return_consumed_capacity=return_consumed_capacity,
+            self.__add_x_lock_to_item(item)
+            result = self.__put(item, expected=expected, return_values=return_values,
+                                return_consumed_capacity=return_consumed_capacity,
                                return_item_collection_metrics=return_item_collection_metrics)
             self.tx._put_tx_log(self, result, 'PUT')
             return result
@@ -272,17 +272,17 @@ class TxItem():
             for k in self.key.keys():
                 expected[k] = {'Exists': 'false'}
                 item[k] = self.key[k]
-            self._add_x_lock_to_item(item)
+            self.__add_x_lock_to_item(item)
             logger.debug('Expected value: {}'.format(str(expected)))
             logger.debug('Item value: {}'.format(str(item)))
-            result = self._put(item, expected=expected, return_values=return_values,
-                               return_consumed_capacity=return_consumed_capacity,
+            result = self.__put(item, expected=expected, return_values=return_values,
+                                return_consumed_capacity=return_consumed_capacity,
                                return_item_collection_metrics=return_item_collection_metrics)
             self.tx._put_tx_log(self, None, 'DELETE')
             return result
 
-    def _update(self, attribute_updates=None, expected=None, return_values=None, return_consumed_capacity=None,
-                return_item_collection_metrics=None):
+    def __update(self, attribute_updates=None, expected=None, return_values=None, return_consumed_capacity=None,
+                 return_item_collection_metrics=None):
         for k in self.key.keys():
             try:
                 del attribute_updates[k]
@@ -307,7 +307,7 @@ class TxItem():
                 'Value': {'S': self.tx_uuid_str},
                 'Exists': 'true'
             }
-            result = self._update(
+            result = self.__update(
                 attribute_updates=update_data, expected=expected, return_values=return_values,
                 return_consumed_capacity=return_consumed_capacity,
                 return_item_collection_metrics=return_item_collection_metrics)

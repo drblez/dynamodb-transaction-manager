@@ -14,7 +14,7 @@ from dynamodb2.transaction.item import TxItem
 __author__ = 'drblez'
 
 TX_TABLE_NAME = 'tx-trans-man-tx-info'
-TX_DATA_TABLE_NAME = 'tx-trans-man-tx-data'
+TX_DATA_TABLE_NAME = 'tx-trans-man-tx-__data'
 
 ISOLATION_LEVEL_FULL_LOCK = '000 full lock'
 ISOLATION_LEVEL_READ_COMMITTED = '100 read committed'
@@ -201,7 +201,7 @@ class Tx():
             'operation': {'S': operation}
         }
         if not data is None:
-            log_record['data'] = {'S': json.dumps(data)}
+            log_record['__data'] = {'S': json.dumps(data)}
         expected = {
             'tx_uuid': {'Exists': 'false'},
             'log_uuid': {'Exists': 'false'}
@@ -246,8 +246,8 @@ class Tx():
             table_name = log_record['table']['S']
             operation = log_record['operation']['S']
             if operation == 'PUT':
-                data = json.loads(log_record['data']['S'])['Attributes']
-                logger.debug('PUT Table: {}, data: {}'.format(table_name, data))
+                data = json.loads(log_record['__data']['S'])['Attributes']
+                logger.debug('PUT Table: {}, __data: {}'.format(table_name, data))
                 self.connection.connection.put_item(table_name, data)
             elif operation == 'DELETE':
                 key = json.loads(log_record['key']['S'])

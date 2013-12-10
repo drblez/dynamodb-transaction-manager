@@ -265,6 +265,10 @@ class TxItem():
         except NotExistingItem:
             raise NotExistingItem('Cannot update non existent item with key {}'.format(self.key))
 
+    def __delete(self, expected=None, return_values=None, return_consumed_capacity=None,
+                 return_item_collection_metrics=None):
+        return {}
+
     def delete(self, expected=None, return_consumed_capacity=None, return_item_collection_metrics=None):
         return_values = 'ALL_OLD'
         try:
@@ -279,7 +283,3 @@ class TxItem():
             return result
         except NotExistingItem:
             raise NotExistingItem('Cannot delete non existent item with key {}'.format(self.key))
-
-    def __delete(self, expected=None, return_values=None, return_consumed_capacity=None,
-                 return_item_collection_metrics=None):
-        return {}

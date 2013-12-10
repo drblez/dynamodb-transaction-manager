@@ -74,6 +74,7 @@ class TxItem():
         attribute_to_get = [LOCKS_DATA_FIELD]
         consistent_read = True
         items = self.tx.connection.connection.get_item(self.table_name, self.key, attribute_to_get, consistent_read)
+        self.tx.stat['GET1'] += 1
         if items == {}:
             raise NotExistingItem('Item with key {} not exist'.format(str(self.key)))
         items = items['Item']
@@ -94,6 +95,7 @@ class TxItem():
         data_value = self.tx_uuid_str
         attribute_updates = {X_LOCK_DATA_FIELD: dict(Action='PUT', Value=dict(S=data_value))}
         self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates, expected)
+        self.tx.stat['UPDATE1'] += 1
 
     def __lock(self, lock_state, after_x_lock=False):
         if after_x_lock:
@@ -105,6 +107,7 @@ class TxItem():
             LOCKS_DATA_FIELD: dict(Action='ADD', Value=dict(SS=[json.dumps(data_value)]))
         }
         self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates, expected)
+        self.tx.stat['UPDATE1'] += 1
 
     def __unlock(self):
         try:
@@ -112,6 +115,7 @@ class TxItem():
             expected = {X_LOCK_DATA_FIELD: dict(Value=dict(S=data_value), Exists='true')}
             attribute_updates = {X_LOCK_DATA_FIELD: dict(Action='DELETE')}
             self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates, expected)
+            self.tx.stat['UPDATE1'] += 1
         except ConditionalCheckFailedException:
             pass
         data_value_1 = dict(tx_uuid=self.tx_uuid_str, lock=LOCK_EXCLUSIVE)
@@ -121,6 +125,7 @@ class TxItem():
                 Action='DELETE', Value=dict(SS=[json.dumps(data_value_1), json.dumps(data_value_2)]))
         }
         self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates)
+        self.tx.stat['UPDATE1'] += 1
 
     def lock(self, requested_lock_state):
         logger.debug('Current lock state is {}, requested lock state is {}'.format(self.lock_state,
@@ -152,6 +157,7 @@ class TxItem():
                         LOCKS_DATA_FIELD: dict(Action='DELETE', Value={'SS': [json.dumps(data_value)]})
                     }
                     self.tx.connection.connection.update_item(self.table_name, self.key, attribute_updates)
+                    self.tx.stat['UPDATE1'] += 1
                     self.lock_state = requested_lock_state
                     return True
                 else:
@@ -168,7 +174,8 @@ class TxItem():
             count += wait_time
             if count > max_wait_time:
                 if generate_exception:
-                    raise LockWaitTime('Exceed {} sec.'.format(max_wait_time))
+                    raise LockWaitTime('Lock time for item with key {} in table "{}" exceed {} sec.'.
+                    format(self.key, self.table_name, max_wait_time))
                 return False
             sleep(wait_time)
         return True
@@ -183,6 +190,7 @@ class TxItem():
             attributes_to_get=attributes_to_get,
             consistent_read=consistent_read,
             return_consumed_capacity=return_consumed_capacity)
+        self.tx.stat['GET'] += 1
         return result
 
     def get(self, attributes_to_get=None, consistent_read=True, return_consumed_capacity=None):
@@ -198,6 +206,7 @@ class TxItem():
             return_consumed_capacity=return_consumed_capacity,
             return_item_collection_metrics=return_item_collection_metrics
         )
+        self.tx.stat['PUT'] += 1
         return result
 
     def __add_x_lock_to_item(self, item):
@@ -246,6 +255,7 @@ class TxItem():
             self.table_name, self.key, attribute_updates=attribute_updates, expected=expected,
             return_values=return_values, return_consumed_capacity=return_consumed_capacity,
             return_item_collection_metrics=return_item_collection_metrics)
+        self.tx.stat['UPDATE'] += 1
         return result
 
     def update(self, update_data, expected=None, return_consumed_capacity=None,
